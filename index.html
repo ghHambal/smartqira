@@ -9,13 +9,13 @@
     <meta name="apple-mobile-web-app-title" content="TfsPro_Piraya">
     <meta name="theme-color" content="#2E7D32">
   
-  <title>📖 smartQiraPro</title>
+  <title>Hifz Tracker Pro</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  
   <style>
     * { font-family: 'Sarabun', sans-serif; }
     :root {
@@ -2410,8 +2410,8 @@ function renderDashClassProgressUI() {
                     </select>
 
                     <div class="bg-gray-100 rounded-lg p-1 flex">
-                        <button onclick="switchDashClassView('card')" class="px-3 py-1.5 rounded text-xs font-medium transition ${dashClassViewMode === 'card' ? 'bg-white shadow text-green-700' : 'text-gray-600'}">Card</button>
-                        <button onclick="switchDashClassView('table')" class="px-3 py-1.5 rounded text-xs font-medium transition ${dashClassViewMode === 'table' ? 'bg-white shadow text-green-700' : 'text-gray-600'}">Table</button>
+                        <button onclick="switchDashClassView('card')" class="px-3 py-1.5 rounded text-xs font-medium transition ${dashClassViewMode === 'card' ? 'bg-white shadow text-green-700' : 'text-gray-600'}">🎴 Card</button>
+                        <button onclick="switchDashClassView('table')" class="px-3 py-1.5 rounded text-xs font-medium transition ${dashClassViewMode === 'table' ? 'bg-white shadow text-green-700' : 'text-gray-600'}">📋 Table</button>
                     </div>
                 </div>
                 ` : ''}
@@ -2664,7 +2664,7 @@ let studentClassFilter = localStorage.getItem('hifzStudentFilter') || '';
 
 function displayStudents() {
   const canManage = currentUser.role === 'admin' || currentUser.role === 'director' || currentUser.role === 'teacher';
-  const canPrint = currentUser.role !== 'parent';
+  const canPrint = true;
   
   // กรองข้อมูล
   let filtered = allStudents;
@@ -2851,7 +2851,7 @@ function renderStudentsCard(students, canManage) {
                 ดูข้อมูล
               </button>
               ${canManage ? `
-                <button onclick="showLogModal('${s.studentId}')" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">
+                <button onclick="showLogModal('${s.studentId}')" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium">
                   บันทึก
                 </button>
               ` : ''}
@@ -3020,19 +3020,15 @@ async function fetchReportFromSupabase(studentId) {
       }
   });
 
-  // 🧮 ประมวลผล "เกรดรายเดือน" จากจำนวนแผ่นรวม (เฉพาะ سبق)
+  // 🧮 ประมวลผล "เกรดรายเดือน" ตามเกณฑ์ของโปรแกรมนั้นๆ
+  const _gc = getProgramGrading(program);
   Object.keys(monthlyStats).forEach(key => {
       const m = monthlyStats[key];
       const t = m.totalPages;
-      
-      // อิงเกณฑ์: 5 แผ่น=4, 4 แผ่น=3.5, 3.5 แผ่น=3, 3 แผ่น=2.5, 2.5 แผ่น=2, 2 แผ่น=1.5, 1 แผ่น=1
-      if (t >= 5) m.gradeCount[4] = 1;
-      else if (t >= 4) m.gradeCount[3.5] = 1;
-      else if (t >= 3.5) m.gradeCount[3] = 1;
-      else if (t >= 3) m.gradeCount[2.5] = 1;
-      else if (t >= 2.5) m.gradeCount[2] = 1;
-      else if (t >= 2) m.gradeCount[1.5] = 1;
-      else if (t >= 1) m.gradeCount[1] = 1;
+      m.computedGrade = calcGrade(t, _gc);
+      // เก็บ gradeCount ด้วยสำหรับ backward compat (key = grade value)
+      m.gradeCount = {};
+      if (m.computedGrade !== '-') m.gradeCount[parseFloat(m.computedGrade)] = 1;
   });
 
   return { 
@@ -3154,6 +3150,7 @@ async function viewStudentDetail(studentId) {
         return r.monthlyStats[`${year}-${mm}`] || r.monthlyStats[`${year - 1}-${mm}`] || r.monthlyStats[`${year + 1}-${mm}`] || null;
     };
 
+    const _pgc = getProgramGrading(p);
     const renderTermTable = (termNum, months, startMonth) => {
         let rows = '';
         let termPages = 0;
@@ -3162,19 +3159,11 @@ async function viewStudentDetail(studentId) {
             let mNum = startMonth + i;
             let mYear = currentYear - 543;
             if (mNum > 12) { mNum -= 12; mYear += 1; }
-            
+
             const mData = getMonthData(mNum, mYear);
             const pages = mData ? mData.totalPages : 0;
             termPages += pages;
-            
-            let grade = '-';
-            if (pages >= 5) grade = '4';
-            else if (pages >= 4) grade = '3.5';
-            else if (pages >= 3.5) grade = '3';
-            else if (pages >= 3) grade = '2.5';
-            else if (pages >= 2.5) grade = '2';
-            else if (pages >= 2) grade = '1.5';
-            else if (pages >= 1) grade = '1';
+            const grade = mData ? (mData.computedGrade || calcGrade(pages, _pgc)) : '-';
 
             rows += `<tr class="border-b"><td class="py-2 text-sm">${months[i]}</td><td class="py-2 text-center text-sm font-medium ${pages>0?'text-green-600':''}">${pages > 0 ? pages.toFixed(1) : '-'}</td><td class="py-2 text-center text-sm font-bold ${grade!=='-'?'text-blue-600':''}">${grade}</td></tr>`;
         }
@@ -3226,7 +3215,7 @@ async function viewStudentDetail(studentId) {
       <div class="bg-white rounded-xl shadow mb-6">
         <div class="p-5 border-b flex justify-between items-center">
           <h3 class="font-bold text-gray-800">📝 ประวัติการท่อง (ล่าสุด 20 รายการ)</h3>
-          ${currentUser.role !== 'parent' ? `<button onclick="printStudentReport('${s.studentId}')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium shadow-sm">🖨️ พิมพ์รายงาน</button>` : ''}
+          <button onclick="printStudentReport('${s.studentId}')" class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm font-medium shadow-sm">🖨️ พิมพ์รายงาน</button>
         </div>
         <div class="divide-y">${r.recentLogs.length === 0 ? '<p class="p-8 text-center text-gray-500">ยังไม่มีบันทึก</p>' : r.recentLogs.slice(0, 20).map(log => { const info = getLogTypeInfo(log.logType); return `<div class="p-4 flex items-center justify-between hover:bg-gray-50"><div class="flex-1"><div class="flex items-center gap-2 mb-1"><span class="px-2 py-0.5 rounded text-xs ${info.color}">${info.label}</span>${log.status === 'PASS' ? '<span class="text-green-600 text-xs font-medium">✓ ผ่าน</span>' : ''}</div><p class="text-sm text-gray-700">${log.surahName && log.surahName !== '-' ? `ยุซ ${log.juzNumber} - ${log.surahName}` : ''}${log.ayah && log.ayah !== '-' ? ` • อายะฮ์ ${log.ayah}` : ''}</p>${log.note ? `<p class="text-xs text-gray-500 italic mt-1">"${log.note}"</p>` : ''}</div><div class="text-right">${log.score > 0 ? `<p class="font-bold">⭐ ${log.score}/5</p>` : ''}<p class="text-xs text-gray-500">${formatDate(log.date)}</p></div></div>`; }).join('')}</div>
       </div>
@@ -3803,9 +3792,9 @@ function renderLogModal(student) {
                   <div class="flex items-center gap-2">
                     <span class="text-2xl">📄</span>
                     <div>
-                      <p class="text-xs text-gray-600">จำนวนแผ่นที่ท่องได้</p>
+                      <p class="text-xs text-gray-600">จำนวนหน้าที่ท่องได้</p>
                       <p class="text-2xl font-bold text-green-700">
-                        <span id="pagesDisplay">0</span> <span class="text-sm font-normal">แผ่น</span>
+                        <span id="pagesDisplay">0</span> <span class="text-sm font-normal">หน้า</span>
                        </p>
                       <p class="text-xs text-gray-500 mt-0.5">✨ คำนวณอัตโนมัติจากจำนวนอายะฮ์</p>
                     </div>
@@ -3814,10 +3803,10 @@ function renderLogModal(student) {
                 </div>
               </div>
               <div id="pagesEditMode" class="hidden">
-                 <label class="block text-sm font-medium text-gray-700 mb-2">📄 จำนวนแผ่น (ปรับด้วยตนเอง)</label>
+                 <label class="block text-sm font-medium text-gray-700 mb-2">📄 จำนวนหน้า (ปรับด้วยตนเอง)</label>
                 <div class="flex gap-2 items-center mb-2">
                   <input type="number" id="logPages" step="0.5" min="0" max="20" placeholder="เช่น 2.5" class="flex-1 px-4 py-2 border-2 rounded-lg focus:outline-none focus:border-blue-600">
-                  <span class="text-gray-600 text-sm">แผ่น</span>
+                  <span class="text-gray-600 text-sm">หน้า/หน้า/แผ่น</span>
                   <button type="button" onclick="resetToAutoPages()" class="text-xs bg-white border-2 border-gray-300 hover:border-green-500 px-3 py-2 rounded-lg text-gray-700 font-medium whitespace-nowrap">↩️ กลับใช้ Auto</button>
                 </div>
                 <div class="flex gap-1 flex-wrap">
@@ -4670,7 +4659,7 @@ function displayReports(reports) {
 }
 
 function renderReportsUI() {
-  const canPrint = currentUser.role !== 'parent';
+  const canPrint = true;
 
 // Filter ตาม role
 let baseReports = allReports;
@@ -4943,8 +4932,8 @@ function renderReportsTable(reports) {
                   <td class="px-4 py-3 text-center text-sm text-yellow-600 font-medium">${r.reviewCount}</td>
                   <td class="px-4 py-3 text-center text-sm">⭐ ${r.avgScore}</td>
                   <td class="px-4 py-3 text-center whitespace-nowrap">
-                    <button onclick="viewStudentDetail('${r.studentId}')" class="text-blue-600 hover:underline text-xs">ดู</button>
-                    <button onclick="printStudentReport('${r.studentId}')" class="text-green-600 hover:underline text-xs ml-2">พิมพ์</button>
+                    <button onclick="viewStudentDetail('${r.studentId}')" class="text-blue-600 hover:underline text-xs">👁️</button>
+                    <button onclick="printStudentReport('${r.studentId}')" class="text-green-600 hover:underline text-xs ml-2">🖨️</button>
                   </td>
                 </tr>
               `;
@@ -5258,7 +5247,16 @@ function buildReportHTML(r, type) {
     @page { size: A4; margin: 10mm; }
 
     /* บังคับตัดหน้ากระดาษ */
-    .page { page-break-after: always; break-after: page; min-height: 275mm; padding: 10px; position: relative; }
+      .page {
+        page-break-after: always !important; break-after: page !important;
+        page-break-inside: avoid !important; break-inside: avoid !important;
+        height: 296mm;
+        padding: 10mm 15mm;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
     .page-summary { page-break-before: always; break-before: page; }
     .page:last-child { page-break-after: auto; break-after: auto; }
 
@@ -5362,46 +5360,60 @@ function buildCoverPage(s, p, teacher, schoolName, schoolNameEn, schoolNameArabi
   }
 
   return `
-<div class="page">
-  <div style="border: 4px double #000; padding: 20px; height: 100%; min-height: 270mm; display: flex; flex-direction: column; position: relative;">
+<div class="page" style="display: flex; flex-direction: column;">
+  <div style="border: 4px double #000; padding: 15px 20px; flex: 1; display: flex; flex-direction: column; box-sizing: border-box; min-height: 265mm;">
 
-    <div style="text-align: center; margin-bottom: 10px;">
-      ${logoUrl ? `<img src="${logoUrl}" style="height: 80px; object-fit: contain;">` : '<div style="height:80px;"></div>'}
+    <div style="text-align: center; margin-bottom: 8px; flex-shrink: 0;">
+      ${logoUrl ? `<img src="${logoUrl}" style="height: 72px; object-fit: contain;">` : '<div style="height:72px;"></div>'}
     </div>
 
-    <div style="border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 8px 0; text-align: center; margin-bottom: 30px;">
+    <div style="border-top: 1.5px solid #000; border-bottom: 1.5px solid #000; padding: 6px 0; text-align: center; margin-bottom: 20px; flex-shrink: 0;">
       <div style="font-size: 22px; font-weight: bold; margin-bottom: 2px;">${schoolName}</div>
-      <div style="font-size: 14px; text-transform: uppercase;">${schoolNameEn}</div>
+      <div style="font-size: 13px; text-transform: uppercase;">${schoolNameEn}</div>
     </div>
 
-    <div style="text-align: center; margin-bottom: 20px;">
-      <h1 style="font-size: 40px; font-weight: bold; margin: 0 0 15px 0;">${reportTitle}</h1>
-      <h1 class="arabic" style="font-size: 38px; font-weight: normal; margin: 0 0 15px 0;">${reportTitleArabic}</h1>
-      <h1 style="font-size: 48px; font-family: 'Times New Roman', serif; font-style: italic; font-weight: normal; margin: 0;">${programSubtitle}</h1>
+    <div style="text-align: center; margin-bottom: 15px; flex-shrink: 0;">
+      <h1 style="font-size: 38px; font-weight: bold; margin: 0 0 12px 0;">${reportTitle}</h1>
+      <h1 class="arabic" style="font-size: 36px; font-weight: normal; margin: 0 0 12px 0;">${reportTitleArabic}</h1>
+      <h1 style="font-size: 44px; font-family: 'Times New Roman', serif; font-style: italic; font-weight: normal; margin: 0;">${programSubtitle}</h1>
     </div>
 
-    <div style="border: 2px double #000; padding: 15px; margin: 30px 10px; display: flex; align-items: center;">
-      <div style="width: 30%; text-align: center;">${iconHtml}</div>
-      <div style="width: 70%; text-align: center; padding-left: 10px;">
-        <p class="arabic" style="font-size: 28px; font-weight: bold; line-height: 1.6; margin: 0 0 10px 0;">${hadithArabic}</p>
-        <p style="font-size: 14px; font-family: 'Times New Roman', serif; font-style: italic; font-weight: bold; margin: 0;">${hadithEnglish}</p>
+    <div style="border: 2px double #000; padding: 12px; margin: 0 5px; display: flex; align-items: center; flex-shrink: 0;">
+      <div style="width: 28%; text-align: center;">${iconHtml}</div>
+      <div style="width: 72%; text-align: center; padding-left: 10px;">
+        <p class="arabic" style="font-size: 26px; font-weight: bold; line-height: 1.6; margin: 0 0 8px 0;">${hadithArabic}</p>
+        <p style="font-size: 13px; font-family: 'Times New Roman', serif; font-style: italic; font-weight: bold; margin: 0;">${hadithEnglish}</p>
       </div>
     </div>
 
-    <div style="border: 1.5px solid #000; padding: 20px; position: absolute; bottom: 20px; left: 20px; right: 20px; font-size: 16px; line-height: 2.2;">
-      <div style="display: flex;">
-        <div style="flex: 1;">ชื่อ <span style="display: inline-block; border-bottom: 1px dotted #000; width: 85%;">${s.firstName || ''}</span></div>
-        <div style="flex: 1;">นามสกุล <span style="display: inline-block; border-bottom: 1px dotted #000; width: 80%;">${s.lastName || ''}</span></div>
-      </div>
-      <div style="display: flex;">
-        <div style="flex: 0.8;">เลขที่ <span style="display: inline-block; border-bottom: 1px dotted #000; width: 60%;">&nbsp;</span></div>
-        <div style="flex: 0.8;">ชั้น <span style="display: inline-block; border-bottom: 1px dotted #000; width: 60%;">${s.classRoom || ''}</span></div>
-        <div style="flex: 1.4;">เลขประจำตัว <span style="display: inline-block; border-bottom: 1px dotted #000; width: 65%;">${s.studentId || ''}</span></div>
-      </div>
-      <div style="display: flex;">
-        <div style="flex: 1;">โปรแกรม <span style="display: inline-block; border-bottom: 1px dotted #000; width: 75%;">${p ? p.programName : ''}</span></div>
-        <div style="flex: 1;">ปีการศึกษา <span style="display: inline-block; border-bottom: 1px dotted #000; width: 75%;">${currentYear}</span></div>
-      </div>
+    <div style="flex: 1; min-height: 8mm;"></div>
+
+    <div style="border: 1.5px solid #000; padding: 12px 15px; font-size: 14px; line-height: 1.9; flex-shrink: 0;">
+      <table style="width: 100%; border-collapse: collapse; table-layout: fixed;" class="no-border">
+        <tr>
+          <td style="border: none !important; padding: 2px 4px 2px 0; white-space: nowrap; width: 3.2em;">ชื่อ</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 10px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.firstName || ''}</td>
+          <td style="border: none !important; padding: 2px 4px 2px 6px; white-space: nowrap; width: 4.2em;">นามสกุล</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.lastName || ''}</td>
+        </tr>
+        <tr>
+          <td style="border: none !important; padding: 2px 4px 2px 0; white-space: nowrap;">เลขที่</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px;">&nbsp;</td>
+          <td style="border: none !important; padding: 2px 4px 2px 6px; white-space: nowrap;">ชั้น</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px; white-space: nowrap;">${s.classRoom || ''}</td>
+        </tr>
+        <tr>
+          <td style="border: none !important; padding: 2px 4px 2px 0; white-space: nowrap;">เลขประจำตัว</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px; white-space: nowrap;">${s.studentId || ''}</td>
+          <td style="border: none !important; padding: 2px 4px 2px 6px; white-space: nowrap;">โปรแกรม</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${p ? p.programName : ''}</td>
+        </tr>
+        <tr>
+          <td style="border: none !important; padding: 2px 4px 2px 0; white-space: nowrap;">ปีการศึกษา</td>
+          <td style="border: none !important; border-bottom: 1px dotted #000 !important; padding: 2px 4px 0 4px; white-space: nowrap;">${currentYear}</td>
+          <td colspan="2" style="border: none !important;"></td>
+        </tr>
+      </table>
     </div>
 
   </div>
@@ -5485,16 +5497,14 @@ function buildSummaryPage(r, schoolName, currentTerm) {
   const term2MonthsThai = (appSettings.term2MonthsThai || 'พ.ย., ธ.ค., ม.ค., ก.พ., มี.ค., เม.ย.').split(',').map(s=>s.trim());
   const term2MonthsArabic = (appSettings.term2MonthsArabic || 'فرسجيكاكون, تنواكوم, مكراكوم, كومفافن, ميناكوم, أبريل').split(',').map(s=>s.trim());
 
+  // ดึงเกณฑ์ของโปรแกรมนี้ (ถ้าไม่มีใช้ค่า default)
+  const _gc = getProgramGrading(r.program);
+  const _grades = _gc.grades;
+  const _headerNotes = _gc.headerNotes || [];
+  // สร้าง note array รวม header + grade notes สำหรับคอลัมน์หมายเหตุ
   const gradingCriteria = [
-    'เกณฑ์การประเมินให้ระดับผลการ',
-    'ท่องจำอัลกุรอานมีดังนี้',
-    'เกรด 4 &nbsp; คะแนน 80-100 = 5 แผ่น',
-    'เกรด 3.5 คะแนน 75-79 &nbsp;= 4 แผ่น',
-    'เกรด 3 &nbsp; คะแนน 70-74 &nbsp;= 3.5 แผ่น',
-    'เกรด 2.5 คะแนน 65-69 &nbsp;= 3 แผ่น',
-    'เกรด 2 &nbsp; คะแนน 60-64 &nbsp;= 2.5 แผ่น',
-    'เกรด 1.5 คะแนน 55-59 &nbsp;= 2 แผ่น',
-    'เกรด 1 &nbsp; คะแนน 50-54 &nbsp;= 1 แผ่น'
+    ..._headerNotes,
+    ..._grades.map(g => g.note || '')
   ];
 
   // ⚡ อัปเกรด: ระบบค้นหาเดือนแบบยืดหยุ่น (แก้ปัญหาการเหลื่อมปีปฏิทิน/ปีการศึกษา)
@@ -5531,8 +5541,8 @@ function buildSummaryPage(r, schoolName, currentTerm) {
         if (mData) totalPages += mData.totalPages;
       }
 
-      const checks = [4, 3.5, 3, 2.5, 2, 1.5, 1].map(g => 
-        `<td class="center-text" style="border: 1px solid #000;">${(mData && mData.gradeCount[g] > 0) ? '/' : ''}</td>`
+      const checks = _grades.map(g =>
+        `<td class="center-text" style="border: 1px solid #000;">${(mData && mData.computedGrade === String(g.grade)) ? '/' : ''}</td>`
       ).join('');
 
       const noteText = gradingCriteria[i] || '';
@@ -5548,15 +5558,8 @@ function buildSummaryPage(r, schoolName, currentTerm) {
       `;
     }
 
-    // 🧮 ประเมินผลรวมทั้งเทอม เพื่อใส่ด้านล่างสุดของตาราง
-    let finalGrade = '-';
-    if (totalPages >= 5) finalGrade = '4';
-    else if (totalPages >= 4) finalGrade = '3.5';
-    else if (totalPages >= 3.5) finalGrade = '3';
-    else if (totalPages >= 3) finalGrade = '2.5';
-    else if (totalPages >= 2.5) finalGrade = '2';
-    else if (totalPages >= 2) finalGrade = '1.5';
-    else if (totalPages >= 1) finalGrade = '1';
+    // 🧮 ประเมินผลรวมทั้งเทอม ตามเกณฑ์โปรแกรม
+    const finalGrade = calcGrade(totalPages, _gc);
 
     return `
       <div style="margin-bottom: 10px;">
@@ -5570,11 +5573,11 @@ function buildSummaryPage(r, schoolName, currentTerm) {
               <th rowspan="2" style="border: 1px solid #000; width: 4%; text-align: center;">ที่<br><span class="arabic" style="font-weight:normal; font-size:10px;">بيلاغن</span></th>
               <th rowspan="2" style="border: 1px solid #000; width: 14%; text-align: center;">เดือน<br><span class="arabic" style="font-weight:normal; font-size:10px;">بولن</span></th>
               <th rowspan="2" style="border: 1px solid #000; width: 10%; text-align: center;">จำนวนแผ่น<br><span class="arabic" style="font-weight:normal; font-size:10px;">جمله لمبر</span></th>
-              <th colspan="7" style="border: 1px solid #000; width: 35%; text-align: center;">ระดับผลการประเมิน<br><span class="arabic" style="font-weight:normal; font-size:10px;">فريكسا فنيلاين</span></th>
+              <th colspan="${_grades.length}" style="border: 1px solid #000; width: 35%; text-align: center;">ระดับผลการประเมิน<br><span class="arabic" style="font-weight:normal; font-size:10px;">فريكسا فنيلاين</span></th>
               <th rowspan="2" style="border: 1px solid #000; width: 37%; text-align: center;">หมายเหตุ<br><span class="arabic" style="font-weight:normal; font-size:10px;">ملاحظة</span></th>
             </tr>
             <tr>
-              <th style="border: 1px solid #000; text-align: center;">4</th><th style="border: 1px solid #000; text-align: center;">3.5</th><th style="border: 1px solid #000; text-align: center;">3</th><th style="border: 1px solid #000; text-align: center;">2.5</th><th style="border: 1px solid #000; text-align: center;">2</th><th style="border: 1px solid #000; text-align: center;">1.5</th><th style="border: 1px solid #000; text-align: center;">1</th>
+              ${_grades.map(g => `<th style="border: 1px solid #000; text-align: center;">${g.grade}</th>`).join('')}
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -5590,7 +5593,7 @@ function buildSummaryPage(r, schoolName, currentTerm) {
   };
 
   return `
-<div class="page page-summary" style="padding: 10px;">
+<div class="page page-summary" style="padding: 10mm 20mm 8mm 25mm;">
   ${buildTermTable(1, term1MonthsThai, term1MonthsArabic)}
   ${buildTermTable(2, term2MonthsThai, term2MonthsArabic)}
 
@@ -5700,6 +5703,40 @@ function escapeHtml(text) {
 
 
 // ============================================
+// ============================================
+// 📊 Grading Criteria Helpers (Per-Program)
+// ============================================
+const DEFAULT_GRADING_CRITERIA = {
+  headerNotes: ['เกณฑ์การประเมินให้ระดับผลการ', 'ท่องจำอัลกุรอานมีดังนี้'],
+  grades: [
+    { grade: 4,   minPages: 5,   note: 'เกรด 4 &nbsp; คะแนน 80-100 = 5 แผ่น' },
+    { grade: 3.5, minPages: 4,   note: 'เกรด 3.5 คะแนน 75-79 &nbsp;= 4 แผ่น' },
+    { grade: 3,   minPages: 3.5, note: 'เกรด 3 &nbsp; คะแนน 70-74 &nbsp;= 3.5 แผ่น' },
+    { grade: 2.5, minPages: 3,   note: 'เกรด 2.5 คะแนน 65-69 &nbsp;= 3 แผ่น' },
+    { grade: 2,   minPages: 2.5, note: 'เกรด 2 &nbsp; คะแนน 60-64 &nbsp;= 2.5 แผ่น' },
+    { grade: 1.5, minPages: 2,   note: 'เกรด 1.5 คะแนน 55-59 &nbsp;= 2 แผ่น' },
+    { grade: 1,   minPages: 1,   note: 'เกรด 1 &nbsp; คะแนน 50-54 &nbsp;= 1 แผ่น' }
+  ]
+};
+
+function getProgramGrading(program) {
+  if (!program || !program.gradingCriteria) return DEFAULT_GRADING_CRITERIA;
+  try {
+    const gc = JSON.parse(program.gradingCriteria);
+    if (gc && Array.isArray(gc.grades) && gc.grades.length > 0) return gc;
+  } catch(e) {}
+  return DEFAULT_GRADING_CRITERIA;
+}
+
+function calcGrade(pages, gc) {
+  if (!pages || pages <= 0) return '-';
+  const grades = (gc || DEFAULT_GRADING_CRITERIA).grades;
+  for (const g of grades) {
+    if (pages >= g.minPages) return String(g.grade);
+  }
+  return '-';
+}
+
 // 🖨️ Bulk Print System - พิมพ์ทั้งห้อง
 // ============================================
 function showBulkPrintModal() {
@@ -5743,52 +5780,49 @@ function showBulkPrintModal() {
           <!-- Step 2: เลือกประเภทรายงาน -->
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">
-              📋 Step 2: เลือกประเภทรายงาน
+              📋 Step 2: เลือกหน้าที่ต้องการพิมพ์ (เลือกได้อิสระ)
             </label>
-            <div class="space-y-2">
-              <label class="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="bulkReportType" value="full" checked class="mr-3">
-                <div class="flex-1">
-                  <p class="font-medium text-gray-800">📚 รายงานฉบับเต็ม</p>
-                  <p class="text-xs text-gray-500">หน้าปก + บันทึก + สรุป (ยาว 4 หน้าต่อคน)</p>
-                </div>
-              </label>
-              
-              <label class="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="bulkReportType" value="cover" class="mr-3">
-                <div class="flex-1">
-                  <p class="font-medium text-gray-800">📄 หน้าปก</p>
-                  <p class="text-xs text-gray-500">เฉพาะหน้าปกเอกสาร (1 หน้าต่อคน)</p>
-                </div>
-              </label>
-              
-              <label class="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="bulkReportType" value="daily" class="mr-3">
-                <div class="flex-1">
-                  <p class="font-medium text-gray-800">📝 บันทึกประจำวัน</p>
-                  <p class="text-xs text-gray-500">ตารางบันทึกรายวัน (1 หน้าต่อคน)</p>
-                </div>
-              </label>
-              
-              <label class="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="bulkReportType" value="summary" class="mr-3">
-                <div class="flex-1">
-                  <p class="font-medium text-gray-800">📊 สรุปภาคเรียน</p>
-                  <p class="text-xs text-gray-500">ตารางสรุปผลประเมิน (1 หน้าต่อคน)</p>
+            <div class="grid grid-cols-2 gap-2">
+
+              <label class="cursor-pointer">
+                <input type="checkbox" name="bulkReportType" value="cover" checked class="peer sr-only" onchange="updateBulkPreview()">
+                <div class="p-3 border-2 border-gray-200 bg-white rounded-xl text-left transition-all hover:border-green-400 peer-checked:border-green-500 peer-checked:bg-green-50 peer-checked:ring-2 peer-checked:ring-green-200 h-full">
+                  <p class="text-xl mb-1">📄</p>
+                  <p class="font-bold text-gray-800 text-sm">หน้าปก</p>
+                  <p class="text-xs text-gray-500 mt-0.5">เอกสารแผ่นแรก</p>
                 </div>
               </label>
 
-              <label class="flex items-center p-3 border-2 rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="radio" name="bulkReportType" value="notes" class="mr-3">
-                <div class="flex-1">
-                  <p class="font-medium text-gray-800">📓 บันทึกเพิ่มเติม</p>
-                  <p class="text-xs text-gray-500">หน้าสมุดมีเส้น พร้อมร่องรอยความคิดเห็นครู (1 หน้าต่อคน)</p>
+              <label class="cursor-pointer">
+                <input type="checkbox" name="bulkReportType" value="daily" checked class="peer sr-only" onchange="updateBulkPreview()">
+                <div class="p-3 border-2 border-gray-200 bg-white rounded-xl text-left transition-all hover:border-green-400 peer-checked:border-green-500 peer-checked:bg-green-50 peer-checked:ring-2 peer-checked:ring-green-200 h-full">
+                  <p class="text-xl mb-1">📝</p>
+                  <p class="font-bold text-gray-800 text-sm">บันทึกประจำวัน</p>
+                  <p class="text-xs text-gray-500 mt-0.5">ตารางบันทึกรายวัน</p>
                 </div>
               </label>
+
+              <label class="cursor-pointer">
+                <input type="checkbox" name="bulkReportType" value="summary" checked class="peer sr-only" onchange="updateBulkPreview()">
+                <div class="p-3 border-2 border-gray-200 bg-white rounded-xl text-left transition-all hover:border-green-400 peer-checked:border-green-500 peer-checked:bg-green-50 peer-checked:ring-2 peer-checked:ring-green-200 h-full">
+                  <p class="text-xl mb-1">📊</p>
+                  <p class="font-bold text-gray-800 text-sm">สรุปภาคเรียน</p>
+                  <p class="text-xs text-gray-500 mt-0.5">ตารางสรุปผลประเมิน</p>
+                </div>
+              </label>
+
+              <label class="cursor-pointer">
+                <input type="checkbox" name="bulkReportType" value="notes" checked class="peer sr-only" onchange="updateBulkPreview()">
+                <div class="p-3 border-2 border-gray-200 bg-white rounded-xl text-left transition-all hover:border-green-400 peer-checked:border-green-500 peer-checked:bg-green-50 peer-checked:ring-2 peer-checked:ring-green-200 h-full">
+                  <p class="text-xl mb-1">📓</p>
+                  <p class="font-bold text-gray-800 text-sm">บันทึกเพิ่มเติม</p>
+                  <p class="text-xs text-gray-500 mt-0.5">หน้าสมุดมีเส้น</p>
+                </div>
+              </label>
+
             </div>
           </div>
           
-          <!-- ข้อมูลเตือน -->
           <div id="bulkWarning" class="hidden p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
             <p class="text-xs text-yellow-800">
               ⚠️ <strong>คำแนะนำ:</strong> หากมีนักเรียนจำนวนมาก การสร้างรายงานอาจใช้เวลาสักครู่ โปรดรอจนกว่าหน้าต่าง Print จะเปิดขึ้น
@@ -5828,30 +5862,28 @@ function showBulkPrintModal() {
 
 function updateBulkPreview() {
   const classSelect = document.getElementById('bulkClassSelect').value;
-  const typeEl = document.querySelector('input[name="bulkReportType"]:checked');
+  const checkedCount = document.querySelectorAll('input[name="bulkReportType"]:checked').length;
   const preview = document.getElementById('bulkPreview');
   const warning = document.getElementById('bulkWarning');
-  
-  if (!classSelect || !typeEl) {
+
+  if (!classSelect) {
     preview.classList.add('hidden');
     return;
   }
-  
+
   let studentCount = 0;
   if (classSelect === '__ALL__') {
     studentCount = allStudents.length;
   } else {
     studentCount = allStudents.filter(s => s.classRoom === classSelect).length;
   }
-  
-  const pagesPerStudent = typeEl.value === 'full' ? 3 : 1;
-  const totalPages = studentCount * pagesPerStudent;
-  
+
+  const totalPages = studentCount * (checkedCount || 1);
+
   document.getElementById('previewCount').textContent = studentCount;
   document.getElementById('previewPages').textContent = totalPages;
   preview.classList.remove('hidden');
-  
-  // แสดง warning ถ้ามากกว่า 20 คน
+
   if (studentCount > 20) {
     warning.classList.remove('hidden');
   } else {
@@ -5864,195 +5896,154 @@ function updateBulkPreview() {
 // ============================================
 function executeBulkPrint() {
   const classSelect = document.getElementById('bulkClassSelect').value;
-  const typeEl = document.querySelector('input[name="bulkReportType"]:checked');
-  
-  if (!classSelect || !typeEl) {
-    showToast('กรุณาเลือกตัวเลือกให้ครบถ้วน', 'warning');
+  const checkedTypes = [...document.querySelectorAll('input[name="bulkReportType"]:checked')].map(el => el.value);
+
+  if (!classSelect || checkedTypes.length === 0) {
+    showToast('กรุณาเลือกห้องเรียน และติ๊กประเภทรายงานอย่างน้อย 1 อย่าง', 'warning');
     return;
   }
-  
+
   let targetStudents = [];
   if (classSelect === '__ALL__') {
     targetStudents = allStudents;
   } else {
     targetStudents = allStudents.filter(s => s.classRoom === classSelect);
   }
-  
+
   if (targetStudents.length === 0) {
     showToast('ไม่มีนักเรียนในห้องนี้', 'warning');
     return;
   }
-  
+
   closeModal();
-  bulkGenerateReportsNative(targetStudents, typeEl.value); 
+  bulkGeneratePdfsAndZip(targetStudents, checkedTypes, classSelect);
 }
 
-// 📄 ฟังก์ชันสร้างรายงานทั้งห้องผ่านระบบ Print ปกติ (แก้ปัญหา Canvas Limit ขาวล้วน)
-async function bulkGenerateReportsNative(students, type) {
-  const printWindow = window.open('', '_blank');
+// 📄 ฟังก์ชันสร้าง PDF รายบุคคลแล้วรวมเป็นไฟล์ ZIP
+async function bulkGeneratePdfsAndZip(students, types, className) {
+  const zip = new JSZip();
+  const folderName = className === '__ALL__' ? 'Reports_AllClasses' : `Reports_Class_${className.replace(/[/\\\\]/g, '-')}`;
+  const folder = zip.folder(folderName);
   
-  if (!printWindow) {
-    showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์แล้วลองใหม่', 'error');
-    return;
-  }
+  const loader = showProgressLoader({ estimatedSeconds: students.length * 2 });
   
-  // หน้าจอโหลดระหว่างดึงข้อมูล (ในแท็บใหม่)
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="th">
-    <head>
-      <meta charset="UTF-8">
-      <title>กำลังเตรียมรายงาน...</title>
-      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-      <style>
-        * { font-family: 'Sarabun', sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
-        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; }
-        .container { text-align: center; padding: 40px; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); max-width: 400px; }
-        .spinner { width: 60px; height: 60px; border: 4px solid #e0e0e0; border-top-color: #2E7D32; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        h2 { color: #333; margin-bottom: 10px; font-size: 20px; }
-        p { color: #666; font-size: 14px; }
-        .count { font-size: 24px; font-weight: bold; color: #2E7D32; margin: 10px 0; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="spinner"></div>
-        <h2>🖨️ กำลังดึงข้อมูลนักเรียน</h2>
-        <div class="count"><span id="current">0</span> / ${students.length} คน</div>
-        <p id="statusText">กรุณารอสักครู่...</p>
-      </div>
-    </body>
-    </html>
-  `);
-  
-  showLoading(`กำลังเตรียมรายงาน 0/${students.length} คน...`);
-  let allHtmlContent = '';
-
   const schoolName       = appSettings.schoolName       || 'โรงเรียน';
   const schoolNameEn     = appSettings.schoolNameEn     || '';
   const schoolNameArabic = appSettings.schoolNameArabic || '';
   const logoUrl          = appSettings.logoUrl          || '';
   const hadithArabic     = appSettings.hadithArabic     || 'خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ';
-  const hadithEnglish    = appSettings.hadithEnglish    || 'Verily the most superior amongst you (Muslims) are those who learn the Quran & teach it.';
+  const hadithEnglish    = appSettings.hadithEnglish    || '';
   const reportTitle       = appSettings.reportTitle       || 'แบบบันทึกการท่องจำอัลกุรอาน';
   const reportTitleArabic = appSettings.reportTitleArabic || 'جاتتن حفظ القرآن';
   const programSubtitle   = appSettings.programSubtitle   || 'Al-Quran Program';
   const currentTerm = appSettings.currentTerm || '1/2569';
   const currentYear = currentTerm.split('/')[1] || '2569';
-
   const coverConfig = {
     type:  appSettings.coverIconType  || 'image',
     emoji: appSettings.coverIconEmoji || '📖',
     url:   appSettings.coverImageUrl  || ''
   };
 
-  // ดึงข้อมูลและต่อ HTML
+  // สร้าง Container ล่องหนสำหรับให้ html2pdf วาด
+  const hiddenContainer = document.createElement('div');
+  hiddenContainer.style.position = 'absolute';
+  hiddenContainer.style.left = '-9999px';
+  hiddenContainer.style.top = '0';
+  document.body.appendChild(hiddenContainer);
+
   for (let i = 0; i < students.length; i++) {
     const student = students[i];
-    try {
-      const currentEl = printWindow.document.getElementById('current');
-      const statusEl = printWindow.document.getElementById('statusText');
-      if (currentEl) currentEl.textContent = (i + 1);
-      if (statusEl) statusEl.textContent = `กำลังคำนวณข้อมูล: ${student.firstName}`;
-      document.getElementById('loadingText').textContent = `กำลังดึงข้อมูล ${i + 1}/${students.length} คน...`;
-    } catch (e) {}
+    loader.updateMessage(`กำลังสร้าง PDF: ${student.firstName} (${i + 1}/${students.length})`);
     
     try {
       const reportData = await fetchReportFromSupabase(student.studentId);
       const teacher = allTeachers.find(t => t.teacherId === reportData.student.teacherId) || null;
+      reportData.teacher = teacher;
+
+      let contentHtml = '';
+      if (types.includes('cover'))   contentHtml += buildCoverPage(reportData.student, reportData.program, teacher, schoolName, schoolNameEn, schoolNameArabic, logoUrl, coverConfig, hadithArabic, hadithEnglish, reportTitle, reportTitleArabic, programSubtitle, currentYear);
+      if (types.includes('daily'))   contentHtml += buildDailyLogPage(reportData, schoolName);
+      if (types.includes('summary')) contentHtml += buildSummaryPage(reportData, schoolName, currentTerm);
+      if (types.includes('notes'))   contentHtml += buildNotesPage(reportData, schoolName);
+
+      // ครอบ CSS เพื่อให้การวาดสมบูรณ์
+      hiddenContainer.innerHTML = `
+        <div style="width: 210mm; background: #fff; font-family: 'Sarabun', sans-serif; color: #000; font-size: 14px; line-height: 1.3; box-sizing: border-box;">
+          <style>
+            * { box-sizing: border-box; }
+            .page {
+              width: 210mm;
+              height: 297mm;
+              padding: 12mm 15mm;
+              margin: 0;
+              position: relative;
+              overflow: hidden;
+              background: white;
+              page-break-after: always;
+              break-after: page;
+              display: flex;
+              flex-direction: column;
+            }
+            .arabic { font-family: 'Scheherazade New', 'Traditional Arabic', serif; direction: rtl; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+            th, td { border: 1px solid #000; padding: 3px 5px; text-align: center; vertical-align: middle; }
+            th { font-weight: bold; background-color: #f8f9fa; }
+            .center-text { text-align: center; font-weight: bold; }
+            .no-border td, .no-border th { border: none !important; }
+            .notebook-paper { border: 1px solid #000; padding: 0; background: #fff; overflow: hidden; flex: 1; }
+            .notebook-line { border-bottom: 1px solid #aaa; padding: 5px 12px 5px 48px; font-size: 13px; min-height: 7.5mm; background: linear-gradient(to right, transparent 0, transparent 38px, #c00 38px, #c00 39px, transparent 39px); }
+            .notebook-line:first-child { border-top: 2px solid #c00; }
+            .notebook-line:last-child { border-bottom: none; }
+          </style>
+          ${contentHtml}
+        </div>
+      `;
+
+      // ตั้งค่า html2pdf
+      const opt = {
+        margin:       0,
+        filename:     `${student.studentId}_${student.firstName}.pdf`,
+        image:        { type: 'jpeg', quality: 0.95 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false, scrollY: 0 },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'avoid-all'] }
+      };
+
+      // สร้าง PDF Blob
+      const pdfBlob = await html2pdf().set(opt).from(hiddenContainer.firstElementChild).output('blob');
       
-      if (type === 'full' || type === 'cover') allHtmlContent += buildCoverPage(reportData.student, reportData.program, teacher, schoolName, schoolNameEn, schoolNameArabic, logoUrl, coverConfig, hadithArabic, hadithEnglish, reportTitle, reportTitleArabic, programSubtitle, currentYear);
-      if (type === 'full' || type === 'daily') allHtmlContent += buildDailyLogPage(reportData, schoolName);
-      if (type === 'full' || type === 'summary') allHtmlContent += buildSummaryPage(reportData, schoolName, currentTerm);
-      if (type === 'full' || type === 'notes') allHtmlContent += buildNotesPage(reportData, schoolName);
-    } catch (error) {
-      console.error('Error loading report for', student.studentId, error);
+      // ยัดใส่ Zip Folder
+      folder.file(`${student.studentId}_${student.firstName}.pdf`, pdfBlob);
+
+    } catch (err) {
+      console.error(`Error generating PDF for ${student.studentId}:`, err);
     }
   }
+
+  document.body.removeChild(hiddenContainer);
   
-  hideLoading();
+  loader.updateMessage('กำลังบีบอัดไฟล์ ZIP...');
   
-  if (printWindow.closed) {
-    showToast('หน้าต่าง Print ถูกปิด', 'error');
-    return;
-  }
-  
-  // 💡 CSS ฉบับสมบูรณ์สำหรับหน้าต่าง Print (ล้างขอบเบราว์เซอร์ 100%)
-  const baseCSS = `
-    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-    body { font-family: 'Sarabun', sans-serif; color: #000; font-size: 14px; line-height: 1.3; background: #fff; margin: 0; padding: 0; }
+  try {
+    // สร้างไฟล์ ZIP
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(zipBlob);
     
-    @page { size: A4 portrait; margin: 0; } /* บังคับไร้ขอบตอนพิมพ์ */
-
-    .page { 
-      width: 210mm;
-      height: 296mm; 
-      padding: 10mm 15mm; 
-      margin: 0 auto;
-      page-break-after: always !important; 
-      break-after: page !important; 
-      overflow: hidden; 
-      position: relative;
-      background: white;
-      border: none;
-    }
-
-    .arabic { font-family: 'Scheherazade New', 'Traditional Arabic', serif; direction: rtl; }
-    table { width: 100%; border-collapse: collapse !important; margin-bottom: 10px; table-layout: fixed; }
-    th, td { border: 1px solid #000 !important; padding: 3px 5px; text-align: center; vertical-align: middle; }
-    th { font-weight: bold; background-color: #f8f9fa !important; }
-    .center-text { text-align: center !important; font-weight: bold; }
-
-    .notebook-paper {
-      border: 1px solid #000;
-      padding: 0;
-      height: 240mm;
-      background: #fff;
-      display: flex;
-      flex-direction: column;
-    }
-    .notebook-line {
-      border-bottom: 1px solid #ddd;
-      padding: 5px 12px 5px 45px;
-      flex: 1; 
-      font-size: 14px;
-      line-height: 1.3;
-      position: relative;
-      background: linear-gradient(to right, transparent 0, transparent 38px, #ffb3b3 38px, #ffb3b3 39px, transparent 39px);
-    }
-    .notebook-line:first-child { border-top: 2px solid #000; }
-
-    @media print {
-      body { background: none; }
-      .page { margin: 0 !important; border: none !important; box-shadow: none !important; }
-    }
-  `;
-
-  const finalHtml = `
-    <!DOCTYPE html>
-    <html lang="th">
-    <head>
-      <meta charset="UTF-8">
-      <title>รายงานรวม - ${students.length} คน</title>
-      <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
-      <style>${baseCSS}</style>
-    </head>
-    <body>
-    ${allHtmlContent}
-    <script>
-      window.onload = function() { setTimeout(function() { window.print(); }, 1500); };
-    <\/script>
-    </body>
-    </html>
-  `;
-
-  // เขียนเนื้อหาลงแท็บใหม่และสั่งพิมพ์
-  printWindow.document.open();
-  printWindow.document.write(finalHtml);
-  printWindow.document.close();
-  
-  showToast(`พร้อมพิมพ์ ${students.length} คน`, 'success');
+    // สั่งดาวน์โหลด
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${folderName}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    loader.finish();
+    showToast('ดาวน์โหลดไฟล์ ZIP สำเร็จ', 'success');
+  } catch (err) {
+    loader.fail('เกิดข้อผิดพลาดในการสร้าง ZIP');
+    console.error(err);
+  }
 }
 
 // ============================================
@@ -6533,6 +6524,9 @@ function renderAdminPanel() {
         <button onclick="switchAdminTab('teachers')" id="admintab-teachers" class="admin-tab px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent hover:bg-gray-50">
           👩‍🏫 ครู
         </button>
+        <button onclick="switchAdminTab('students')" id="admintab-students" class="admin-tab px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent hover:bg-gray-50">
+          🎓 นักเรียน
+        </button>
         <button onclick="switchAdminTab('parents')" id="admintab-parents" class="admin-tab px-5 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent hover:bg-gray-50">
           👨‍👩‍👧 ผู้ปกครอง
         </button>
@@ -6566,6 +6560,7 @@ function switchAdminTab(tab) {
     case 'settings': renderAdminSettings(); break;
     case 'programs': renderAdminPrograms(); break;
     case 'teachers': renderAdminTeachers(); break;
+    case 'students': renderAdminStudents(); break;
     case 'parents': renderAdminParents(); break;
     case 'upload': renderAdminUpload(); break;
     case 'system': renderAdminSystem(); break;
@@ -6969,6 +6964,295 @@ async function renderAdminTeachers() {
 }
 
 // ============================================
+// Admin: Students — CRUD ครบวงจร
+// ============================================
+async function renderAdminStudents() {
+  const content = document.getElementById('adminContent');
+  content.innerHTML = '<div class="text-center py-8">กำลังโหลด...</div>';
+  try {
+    const [stdRes, tRes, pRes, pgRes] = await Promise.all([
+      supabaseClient.from('Students').select('*').order('classRoom').order('studentId'),
+      supabaseClient.from('Teachers').select('teacherId, firstName, lastName, classRoom'),
+      supabaseClient.from('Parents').select('parentId, firstName, lastName'),
+      supabaseClient.from('Programs').select('programId, programName'),
+    ]);
+    if (stdRes.error) throw stdRes.error;
+    allStudents = stdRes.data || [];
+    if (tRes.data) allTeachers = tRes.data;
+    if (pRes.data) allParents = pRes.data;
+    if (pgRes.data) allPrograms = pgRes.data;
+
+    const uniqueClasses = [...new Set(allStudents.map(s => s.classRoom).filter(Boolean))].sort();
+
+    function buildRows(list) {
+      if (!list.length) return `<tr><td colspan="7" class="text-center py-6 text-gray-400">ไม่มีข้อมูล</td></tr>`;
+      return list.map(s => {
+        const teacher = allTeachers.find(t => t.teacherId === s.teacherId);
+        const program = allPrograms.find(p => p.programId === s.programId);
+        return `
+          <tr class="hover:bg-gray-50 ${!s.isActive ? 'opacity-50' : ''}">
+            <td class="px-3 py-2 text-sm font-mono">${s.studentId}</td>
+            <td class="px-3 py-2 text-sm font-medium">${s.firstName} ${s.lastName}</td>
+            <td class="px-3 py-2 text-sm">${s.classRoom || '-'}</td>
+            <td class="px-3 py-2 text-sm">${program ? program.programName : (s.programId || '-')}</td>
+            <td class="px-3 py-2 text-sm">${teacher ? teacher.firstName + ' ' + teacher.lastName : '-'}</td>
+            <td class="px-3 py-2 text-center">
+              <span class="px-2 py-0.5 rounded text-xs ${s.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.isActive ? 'ใช้งาน' : 'ปิด'}</span>
+            </td>
+            <td class="px-3 py-2 text-center text-sm whitespace-nowrap">
+              <button onclick="showAdminStudentModal('${s.studentId}')" class="text-blue-600 hover:underline">แก้</button>
+              <button onclick="toggleStudentAdminAction('${s.studentId}')" class="text-yellow-600 hover:underline ml-2">${s.isActive ? 'ปิด' : 'เปิด'}</button>
+              <button onclick="confirmDelete('นักเรียน ${s.firstName}', () => deleteStudentAdminAction('${s.studentId}'))" class="text-red-600 hover:underline ml-2">ลบ</button>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    content.innerHTML = `
+      <div class="flex flex-wrap gap-3 items-center justify-between mb-4">
+        <h3 class="font-bold text-lg">🎓 นักเรียนทั้งหมด (${allStudents.length} คน)</h3>
+        <button onclick="showAdminStudentModal()" class="primary-bg text-white px-4 py-2 rounded-lg text-sm">+ เพิ่มนักเรียน</button>
+      </div>
+      <div class="flex flex-wrap gap-3 mb-4">
+        <input type="text" id="adminStdSearch" placeholder="ค้นหาชื่อ / รหัส..." oninput="filterAdminStudents()" class="px-3 py-2 border rounded-lg text-sm flex-1 min-w-[180px]">
+        <select id="adminStdClassFilter" onchange="filterAdminStudents()" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">ทุกห้อง</option>
+          ${uniqueClasses.map(c => `<option value="${c}">${c}</option>`).join('')}
+        </select>
+        <select id="adminStdStatusFilter" onchange="filterAdminStudents()" class="px-3 py-2 border rounded-lg text-sm">
+          <option value="">ทุกสถานะ</option>
+          <option value="active">ใช้งาน</option>
+          <option value="inactive">ปิด</option>
+        </select>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full" id="adminStudentTable">
+          <thead class="bg-gray-100">
+            <tr>
+              <th class="px-3 py-2 text-left text-sm">รหัส</th>
+              <th class="px-3 py-2 text-left text-sm">ชื่อ-สกุล</th>
+              <th class="px-3 py-2 text-left text-sm">ห้อง</th>
+              <th class="px-3 py-2 text-left text-sm">โปรแกรม</th>
+              <th class="px-3 py-2 text-left text-sm">ครูที่ปรึกษา</th>
+              <th class="px-3 py-2 text-center text-sm">สถานะ</th>
+              <th class="px-3 py-2 text-center text-sm">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody id="adminStudentTbody" class="divide-y">
+            ${buildRows(allStudents)}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+function filterAdminStudents() {
+  const search = (document.getElementById('adminStdSearch').value || '').toLowerCase();
+  const classFilter = document.getElementById('adminStdClassFilter').value;
+  const statusFilter = document.getElementById('adminStdStatusFilter').value;
+
+  const filtered = allStudents.filter(s => {
+    const matchSearch = !search ||
+      (s.studentId || '').toLowerCase().includes(search) ||
+      (s.firstName || '').toLowerCase().includes(search) ||
+      (s.lastName || '').toLowerCase().includes(search);
+    const matchClass = !classFilter || s.classRoom === classFilter;
+    const matchStatus = !statusFilter ||
+      (statusFilter === 'active' && s.isActive) ||
+      (statusFilter === 'inactive' && !s.isActive);
+    return matchSearch && matchClass && matchStatus;
+  });
+
+  const teacher_map = Object.fromEntries(allTeachers.map(t => [t.teacherId, t]));
+  const program_map = Object.fromEntries(allPrograms.map(p => [p.programId, p]));
+
+  document.getElementById('adminStudentTbody').innerHTML = filtered.length
+    ? filtered.map(s => {
+        const teacher = teacher_map[s.teacherId];
+        const program = program_map[s.programId];
+        return `
+          <tr class="hover:bg-gray-50 ${!s.isActive ? 'opacity-50' : ''}">
+            <td class="px-3 py-2 text-sm font-mono">${s.studentId}</td>
+            <td class="px-3 py-2 text-sm font-medium">${s.firstName} ${s.lastName}</td>
+            <td class="px-3 py-2 text-sm">${s.classRoom || '-'}</td>
+            <td class="px-3 py-2 text-sm">${program ? program.programName : (s.programId || '-')}</td>
+            <td class="px-3 py-2 text-sm">${teacher ? teacher.firstName + ' ' + teacher.lastName : '-'}</td>
+            <td class="px-3 py-2 text-center">
+              <span class="px-2 py-0.5 rounded text-xs ${s.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.isActive ? 'ใช้งาน' : 'ปิด'}</span>
+            </td>
+            <td class="px-3 py-2 text-center text-sm whitespace-nowrap">
+              <button onclick="showAdminStudentModal('${s.studentId}')" class="text-blue-600 hover:underline">แก้</button>
+              <button onclick="toggleStudentAdminAction('${s.studentId}')" class="text-yellow-600 hover:underline ml-2">${s.isActive ? 'ปิด' : 'เปิด'}</button>
+              <button onclick="confirmDelete('นักเรียน ${s.firstName}', () => deleteStudentAdminAction('${s.studentId}'))" class="text-red-600 hover:underline ml-2">ลบ</button>
+            </td>
+          </tr>`;
+      }).join('')
+    : `<tr><td colspan="7" class="text-center py-6 text-gray-400">ไม่พบข้อมูลที่ค้นหา</td></tr>`;
+}
+
+function showAdminStudentModal(studentId) {
+  const student = studentId ? allStudents.find(s => s.studentId === studentId) : null;
+  const isEdit = !!student;
+  const nameData = splitPrefixAndName(isEdit ? student.firstName : '');
+
+  const uniqueClasses = [...new Set(allTeachers.filter(t => t.role === 'teacher' && t.classRoom && t.classRoom !== '-').map(t => t.classRoom))].sort();
+
+  document.getElementById('modalContainer').innerHTML = `
+    <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 fade-in" onclick="if(event.target === this) closeModal()">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+        <div class="p-5 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+          <h3 class="text-xl font-bold">${isEdit ? '✏️ แก้ไขข้อมูลนักเรียน' : '➕ เพิ่มนักเรียน'}</h3>
+          <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form id="adminStudentForm" class="p-5 space-y-4">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">รหัสนักเรียน *</label>
+              <input type="text" id="as_id" value="${isEdit ? student.studentId : ''}" ${isEdit ? 'disabled' : ''} required placeholder="S011"
+                class="w-full px-4 py-2 border-2 rounded-lg ${isEdit ? 'bg-gray-100' : ''}">
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">ห้องเรียน *</label>
+              <input type="text" id="as_class" value="${isEdit ? student.classRoom : ''}" required list="asClassList" placeholder="เลือกหรือพิมพ์"
+                class="w-full px-4 py-2 border-2 rounded-lg">
+              <datalist id="asClassList">
+                ${uniqueClasses.map(c => `<option value="${c}">`).join('')}
+              </datalist>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="col-span-2 md:col-span-1">
+              <label class="block text-sm font-medium mb-1">คำนำหน้า และ ชื่อ *</label>
+              <div class="flex gap-2">
+                <select id="as_prefix" class="w-1/3 px-2 py-2 border-2 rounded-lg text-sm">
+                  <option value="" ${nameData.prefix === '' ? 'selected' : ''}>-</option>
+                  <option value="ด.ช." ${nameData.prefix === 'ด.ช.' ? 'selected' : ''}>ด.ช.</option>
+                  <option value="ด.ญ." ${nameData.prefix === 'ด.ญ.' ? 'selected' : ''}>ด.ญ.</option>
+                  <option value="นาย" ${nameData.prefix === 'นาย' ? 'selected' : ''}>นาย</option>
+                  <option value="นางสาว" ${nameData.prefix === 'นางสาว' ? 'selected' : ''}>นางสาว</option>
+                </select>
+                <input type="text" id="as_fname" value="${nameData.name}" required placeholder="ชื่อจริง" class="w-2/3 px-3 py-2 border-2 rounded-lg">
+              </div>
+            </div>
+            <div class="col-span-2 md:col-span-1">
+              <label class="block text-sm font-medium mb-1">นามสกุล *</label>
+              <input type="text" id="as_lname" value="${isEdit ? student.lastName : ''}" required class="w-full px-4 py-2 border-2 rounded-lg">
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">โปรแกรม *</label>
+            <select id="as_program" required class="w-full px-4 py-2 border-2 rounded-lg">
+              <option value="">เลือกโปรแกรม</option>
+              ${allPrograms.map(p => `
+                <option value="${p.programId}" ${isEdit && student.programId === p.programId ? 'selected' : ''}>
+                  ${p.programName}
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">ครูที่ปรึกษา</label>
+            <select id="as_teacher" class="w-full px-4 py-2 border-2 rounded-lg">
+              <option value="">เลือกครู</option>
+              ${allTeachers.filter(t => t.role === 'teacher').map(t => `
+                <option value="${t.teacherId}" ${isEdit && student.teacherId === t.teacherId ? 'selected' : ''}>
+                  ${t.firstName} ${t.lastName} (${t.classRoom || '-'})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm font-medium mb-1">ผู้ปกครอง</label>
+            <select id="as_parent" class="w-full px-4 py-2 border-2 rounded-lg">
+              <option value="">เลือกผู้ปกครอง</option>
+              ${allParents.map(p => `
+                <option value="${p.parentId}" ${isEdit && student.parentId === p.parentId ? 'selected' : ''}>
+                  ${p.firstName} ${p.lastName} (${p.parentId})
+                </option>
+              `).join('')}
+            </select>
+          </div>
+          <div class="flex gap-3 pt-3">
+            <button type="button" onclick="closeModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 py-2 rounded-lg">ยกเลิก</button>
+            <button type="submit" class="flex-1 primary-bg text-white py-2 rounded-lg">${isEdit ? 'บันทึกการแก้ไข' : 'เพิ่มนักเรียน'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('adminStudentForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const sId = isEdit ? studentId : document.getElementById('as_id').value.trim();
+    const data = {
+      studentId: sId,
+      firstName: (document.getElementById('as_prefix').value + ' ' + document.getElementById('as_fname').value.trim()).trim().replace(/\s+/g, ' '),
+      lastName: document.getElementById('as_lname').value.trim(),
+      classRoom: document.getElementById('as_class').value.trim(),
+      programId: document.getElementById('as_program').value || null,
+      teacherId: document.getElementById('as_teacher').value || null,
+      parentId: document.getElementById('as_parent').value || null,
+      isActive: true,
+    };
+    showLoading('กำลังบันทึกข้อมูล...');
+    try {
+      let res;
+      if (isEdit) {
+        res = await supabaseClient.from('Students').update(data).eq('studentId', studentId);
+      } else {
+        res = await supabaseClient.from('Students').insert([data]);
+      }
+      if (res.error) throw res.error;
+      hideLoading();
+      cacheClearAll();
+      showToast(isEdit ? 'แก้ไขข้อมูลนักเรียนสำเร็จ' : 'เพิ่มนักเรียนสำเร็จ', 'success');
+      closeModal();
+      renderAdminStudents();
+    } catch (err) {
+      hideLoading();
+      showToast(err.message, 'error');
+    }
+  });
+}
+
+async function toggleStudentAdminAction(studentId) {
+  const student = allStudents.find(s => s.studentId === studentId);
+  if (!student) return;
+  showLoading('กำลังเปลี่ยนสถานะ...');
+  try {
+    const { error } = await supabaseClient.from('Students').update({ isActive: !student.isActive }).eq('studentId', studentId);
+    if (error) throw error;
+    hideLoading();
+    cacheClearAll();
+    showToast('เปลี่ยนสถานะสำเร็จ', 'success');
+    renderAdminStudents();
+  } catch (err) {
+    hideLoading();
+    showToast(err.message, 'error');
+  }
+}
+
+async function deleteStudentAdminAction(studentId) {
+  showLoading('กำลังลบ...');
+  try {
+    const { error } = await supabaseClient.from('Students').delete().eq('studentId', studentId);
+    if (error) throw error;
+    hideLoading();
+    cacheClearAll();
+    showToast('ลบข้อมูลนักเรียนสำเร็จ', 'success');
+    renderAdminStudents();
+  } catch (err) {
+    hideLoading();
+    showToast(err.message, 'error');
+  }
+}
+
+// ============================================
 // Admin: Parents (โหลดแบบ Supabase)
 // ============================================
 async function renderAdminParents() {
@@ -7022,19 +7306,32 @@ async function renderAdminParents() {
 function showProgramModal(programId) {
   const program = programId ? allPrograms.find(p => p.programId === programId) : null;
   const isEdit = !!program;
-  
+  const existingGC = getProgramGrading(program);
+
+  // ตรวจจับหน่วยจากข้อมูลเดิม (หน้า หรือ แผ่น)
+  const firstNote = existingGC.grades.find(g => g.note)?.note || '';
+  const initialUnit = firstNote.includes('หน้า') ? 'หน้า' : 'แผ่น';
+  window._gradingUnit = initialUnit;
+
   document.getElementById('modalContainer').innerHTML = `
     <div class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" onclick="if(event.target === this) closeModal()">
-      <div class="bg-white rounded-xl shadow-2xl w-full max-w-md">
-        <div class="p-5 border-b flex justify-between">
+      <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="p-5 border-b flex justify-between sticky top-0 bg-white z-10">
           <h3 class="text-xl font-bold">${isEdit ? '✏️ แก้ไขโปรแกรม' : '➕ เพิ่มโปรแกรม'}</h3>
           <button onclick="closeModal()"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
         </div>
         <form id="programForm" class="p-5 space-y-4">
-          <div>
-            <label class="block text-sm font-medium mb-1">รหัสโปรแกรม *</label>
-            <input type="text" id="p_id" value="${isEdit ? program.programId : ''}" ${isEdit ? 'disabled' : ''} required
-              class="w-full px-4 py-2 border-2 rounded-lg ${isEdit ? 'bg-gray-100' : ''}">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-medium mb-1">รหัสโปรแกรม *</label>
+              <input type="text" id="p_id" value="${isEdit ? program.programId : ''}" ${isEdit ? 'disabled' : ''} required
+                class="w-full px-4 py-2 border-2 rounded-lg ${isEdit ? 'bg-gray-100' : ''}">
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-1">เป้าหมายยุซ/เทอม</label>
+              <input type="number" step="0.5" id="p_target" value="${isEdit ? program.targetJuzPerTerm : 0}"
+                class="w-full px-4 py-2 border-2 rounded-lg">
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium mb-1">ชื่อโปรแกรม *</label>
@@ -7042,18 +7339,54 @@ function showProgramModal(programId) {
               class="w-full px-4 py-2 border-2 rounded-lg">
           </div>
           <div>
-            <label class="block text-sm font-medium mb-1">เป้าหมายยุซ/เทอม</label>
-            <input type="number" step="0.5" id="p_target" value="${isEdit ? program.targetJuzPerTerm : 0}"
-              class="w-full px-4 py-2 border-2 rounded-lg">
-            <p class="text-xs text-gray-500 mt-1">ใส่ 0 หากไม่มีเกณฑ์</p>
-          </div>
-          <div>
             <label class="flex items-center">
               <input type="checkbox" id="p_assess" ${!isEdit || program.hasAssessment ? 'checked' : ''} class="mr-2">
               <span class="text-sm">มีการประเมินคะแนน</span>
             </label>
           </div>
-          <div class="flex gap-3">
+
+          <!-- ===== เกณฑ์การประเมิน ===== -->
+          <div class="border-t pt-4">
+            <div class="flex items-center justify-between mb-1">
+              <div>
+                <p class="text-sm font-bold text-gray-800">📊 เกณฑ์การประเมิน (<span class="unit-label">${initialUnit}</span> → เกรด)</p>
+                <p class="text-xs text-gray-500">ระบบตรวจสอบจากบนลงล่าง เจอเงื่อนไขแรกที่ตรง = ได้เกรดนั้น</p>
+              </div>
+              <button type="button" onclick="addGradingRow()" class="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-lg hover:bg-green-200 font-medium">+ เพิ่มแถว</button>
+            </div>
+
+            <!-- Toggle แผ่น / หน้า -->
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs text-gray-400">หน่วย:</span>
+              <button type="button" id="unit-btn-phaen" onclick="setGradingUnit('แผ่น')"
+                class="px-3 py-1 rounded-full text-xs font-medium transition-all ${initialUnit==='แผ่น' ? 'bg-indigo-500 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">แผ่น</button>
+              <button type="button" id="unit-btn-na" onclick="setGradingUnit('หน้า')"
+                class="px-3 py-1 rounded-full text-xs font-medium transition-all ${initialUnit==='หน้า' ? 'bg-indigo-500 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">หน้า</button>
+              <span class="text-xs text-gray-400 ml-1">— ข้อความ note จะถูก fill ให้อัตโนมัติตามหน่วยที่เลือก</span>
+            </div>
+
+            <div class="bg-gray-50 rounded-lg border p-2">
+              <div class="grid grid-cols-12 gap-1 text-xs text-gray-500 font-medium px-1 mb-1.5">
+                <div class="col-span-2 text-center">เกรด</div>
+                <div class="col-span-3 text-center"><span class="unit-label">${initialUnit}</span>ขั้นต่ำ</div>
+                <div class="col-span-6">ข้อความในคอลัมน์หมายเหตุ (PDF)</div>
+                <div class="col-span-1"></div>
+              </div>
+              <div id="gradingRows" class="space-y-1.5"></div>
+            </div>
+
+            <div class="mt-3 border-t pt-3">
+              <p class="text-xs font-medium text-gray-700 mb-1">ข้อความ Header (2 บรรทัดแรกของคอลัมน์หมายเหตุใน PDF)</p>
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" id="p_note1" value="${(existingGC.headerNotes || [])[0] || DEFAULT_GRADING_CRITERIA.headerNotes[0]}"
+                  placeholder="บรรทัดที่ 1" class="px-3 py-1.5 border rounded text-xs">
+                <input type="text" id="p_note2" value="${(existingGC.headerNotes || [])[1] || DEFAULT_GRADING_CRITERIA.headerNotes[1]}"
+                  placeholder="บรรทัดที่ 2" class="px-3 py-1.5 border rounded text-xs">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-2">
             <button type="button" onclick="closeModal()" class="flex-1 bg-gray-200 py-2 rounded-lg">ยกเลิก</button>
             <button type="submit" class="flex-1 primary-bg text-white py-2 rounded-lg">${isEdit ? 'บันทึก' : 'เพิ่ม'}</button>
           </div>
@@ -7061,18 +7394,39 @@ function showProgramModal(programId) {
       </div>
     </div>
   `;
-  
-document.getElementById('programForm').addEventListener('submit', async function(e) {
+
+  // โหลดแถวเกณฑ์ที่มีอยู่
+  existingGC.grades.forEach(g => addGradingRow(g.grade, g.minPages, g.note));
+
+  document.getElementById('programForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const pId = document.getElementById('p_id').value.trim().toUpperCase();
+
+    // รวบรวมเกณฑ์จาก UI
+    const gradingRows = document.querySelectorAll('.grading-row');
+    const gradesData = Array.from(gradingRows).map(row => ({
+      grade: parseFloat(row.querySelector('.gr-grade').value) || 0,
+      minPages: parseFloat(row.querySelector('.gr-min').value) || 0,
+      note: row.querySelector('.gr-note').value.trim()
+    })).filter(g => g.grade > 0);
+
+    const gradingCriteriaObj = {
+      headerNotes: [
+        document.getElementById('p_note1').value.trim(),
+        document.getElementById('p_note2').value.trim()
+      ],
+      grades: gradesData
+    };
+
     const data = {
       programId: pId,
       programName: document.getElementById('p_name').value.trim(),
       targetJuzPerTerm: parseFloat(document.getElementById('p_target').value) || 0,
       hasAssessment: document.getElementById('p_assess').checked,
+      gradingCriteria: JSON.stringify(gradingCriteriaObj),
       isActive: true
     };
-    
+
     showLoading('กำลังบันทึกข้อมูลโปรแกรม...');
     try {
       let res;
@@ -7092,6 +7446,78 @@ document.getElementById('programForm').addEventListener('submit', async function
       showToast(err.message, 'error');
     }
   });
+}
+
+function _autoNoteText(grade, minPages, unit) {
+  const u = unit || window._gradingUnit || 'แผ่น';
+  if (!grade && !minPages) return '';
+  return `เกรด ${grade} = ${minPages} ${u}`;
+}
+
+function setGradingUnit(unit) {
+  window._gradingUnit = unit;
+  // อัปเดต toggle buttons
+  const btnPhaen = document.getElementById('unit-btn-phaen');
+  const btnNa = document.getElementById('unit-btn-na');
+  if (btnPhaen) btnPhaen.className = `px-3 py-1 rounded-full text-xs font-medium transition-all ${unit==='แผ่น' ? 'bg-indigo-500 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`;
+  if (btnNa)    btnNa.className    = `px-3 py-1 rounded-full text-xs font-medium transition-all ${unit==='หน้า'  ? 'bg-indigo-500 text-white shadow' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`;
+  // อัปเดต label ทุกจุด
+  document.querySelectorAll('.unit-label').forEach(el => el.textContent = unit);
+  // แทนที่คำหน่วยในทุก note — ไม่ regenerate เพื่อรักษา format เดิม
+  const oldUnit = unit === 'แผ่น' ? 'หน้า' : 'แผ่น';
+  document.querySelectorAll('.grading-row').forEach(row => {
+    const noteEl = row.querySelector('.gr-note');
+    if (noteEl && noteEl.value.includes(oldUnit)) {
+      noteEl.value = noteEl.value.split(oldUnit).join(unit);
+    }
+  });
+}
+
+function addGradingRow(grade = '', minPages = '', note = '') {
+  const container = document.getElementById('gradingRows');
+  if (!container) return;
+  const unit = window._gradingUnit || 'แผ่น';
+  // โหลดจาก DB มีข้อความแล้ว → manual (รักษา format); แถวใหม่ว่างเปล่า → auto
+  const isAuto = !note;
+  const displayNote = note || (grade !== '' || minPages !== '' ? _autoNoteText(grade, minPages, unit) : '');
+
+  const row = document.createElement('div');
+  row.className = 'grid grid-cols-12 gap-1 items-center grading-row';
+  row.innerHTML = `
+    <input type="number" step="0.5" min="0" placeholder="4" value="${grade}"
+      class="col-span-2 px-2 py-1.5 border rounded text-sm text-center gr-grade">
+    <input type="number" step="0.5" min="0" placeholder="5" value="${minPages}"
+      class="col-span-3 px-2 py-1.5 border rounded text-sm text-center gr-min">
+    <input type="text" placeholder="เกรด 4 = 5 ${unit}" value="${displayNote}"
+      data-auto="${isAuto ? 'true' : 'false'}"
+      class="col-span-6 px-2 py-1.5 border rounded text-xs gr-note">
+    <button type="button" onclick="this.closest('.grading-row').remove()"
+      class="col-span-1 text-red-400 hover:text-red-600 text-xl text-center leading-none">×</button>
+  `;
+  container.appendChild(row);
+
+  const gradeEl = row.querySelector('.gr-grade');
+  const minEl   = row.querySelector('.gr-min');
+  const noteEl  = row.querySelector('.gr-note');
+
+  // ถ้าผู้ใช้แก้ note เอง → หยุด auto
+  noteEl.addEventListener('input', () => { noteEl.dataset.auto = 'false'; });
+
+  // เมื่อ grade หรือ minPages เปลี่ยน → อัปเดต note ตามโหมด
+  function tryAutoFill() {
+    const m = minEl.value;
+    const u = window._gradingUnit || 'แผ่น';
+    if (noteEl.dataset.auto !== 'false') {
+      // แถวใหม่ว่างเปล่า → auto-fill เต็มรูปแบบ
+      noteEl.value = _autoNoteText(gradeEl.value, m, u);
+      noteEl.dataset.auto = 'true';
+    } else if (m && noteEl.value) {
+      // แถวจาก DB → แทนที่เฉพาะตัวเลขที่อยู่ติดหน่วย (แผ่น/หน้า) เท่านั้น
+      noteEl.value = noteEl.value.replace(/([\d.]+)\s*(แผ่น|หน้า)/g, m + ' $2');
+    }
+  }
+  gradeEl.addEventListener('input', tryAutoFill);
+  minEl.addEventListener('input', tryAutoFill);
 }
 
 async function deleteProgramAction(programId) {
